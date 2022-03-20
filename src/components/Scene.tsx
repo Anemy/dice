@@ -186,8 +186,8 @@ function Scene(): JSX.Element {
     // const diceObjFile = `${(window as any).asset_url ? `${(window as any).asset_url as string}/` : ''}dice.obj`;
     // const diceMtlFile = `${(window as any).asset_url ? `${(window as any).asset_url as string}/` : ''}dice.mtl`;
 
-    const diceObjFile = 'dice.obj';
-    const diceMtlFile = 'dice.mtl';
+    const diceObjFile = (window as any).objAssetUrl || 'dice.obj';
+    const diceMtlFile = (window as any).mtlAssetUrl || 'dice.mtl';
     // const diceMtlFile = 'dice-obj/dice.mtl';
     // const s3DiceObjFile = 'https://wearwiki.s3.us-east-2.amazonaws.com/dice.obj';
     // const s3DiceMtlFile = 'https://wearwiki.s3.us-east-2.amazonaws.com/dice.mtl';
@@ -446,6 +446,8 @@ function Scene(): JSX.Element {
 
       // stats.update();
     }
+
+    controls.enabled = false;
 
     // Start the loop.
     animate();
