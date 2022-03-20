@@ -109,7 +109,7 @@ function Scene(): JSX.Element {
   useEffect(() => {
     const threeScene = new THREE.Scene();
 
-    threeScene.add(new THREE.AxesHelper(5))
+    // threeScene.add(new THREE.AxesHelper(5))
 
 
     // Setup our world.
@@ -180,10 +180,20 @@ function Scene(): JSX.Element {
     // planeMesh.receiveShadow = true
     // threeScene.add(planeMesh)
 
-    const diceObjFile = 'dice-obj/dice.obj';
-    const diceMtlFile = 'dice-obj/dice.mtl';
+    // const diceObjFile = 'dice-obj/dice.obj';
+    // const diceMtlFile = 'dice-obj/dice.mtl';
+
+    // const diceObjFile = `${(window as any).asset_url ? `${(window as any).asset_url as string}/` : ''}dice.obj`;
+    // const diceMtlFile = `${(window as any).asset_url ? `${(window as any).asset_url as string}/` : ''}dice.mtl`;
+
+    const diceObjFile = 'dice.obj';
+    const diceMtlFile = 'dice.mtl';
+    // const diceMtlFile = 'dice-obj/dice.mtl';
     // const s3DiceObjFile = 'https://wearwiki.s3.us-east-2.amazonaws.com/dice.obj';
     // const s3DiceMtlFile = 'https://wearwiki.s3.us-east-2.amazonaws.com/dice.mtl';
+    // const diceObjFile = 'https://wearwiki.s3.us-east-2.amazonaws.com/dice.obj';
+    // const diceMtlFile = 'https://wearwiki.s3.us-east-2.amazonaws.com/dice.mtl';
+
 
     const mtlLoader = new MTLLoader();
 
@@ -205,7 +215,8 @@ function Scene(): JSX.Element {
     cubeMesh.position.x = -3;
     cubeMesh.position.y = 3;
     cubeMesh.castShadow = true;
-    threeScene.add(cubeMesh);
+    // Actual collision model view.
+    // threeScene.add(cubeMesh);
 
 
     mtlLoader.load(diceMtlFile, (materials) => {
@@ -300,11 +311,7 @@ function Scene(): JSX.Element {
       return ray.direction
     }
 
-    window.addEventListener('click', () => {
-      if (!controls.enabled) {
-        return
-      }
-
+    function rollDice() {
       const shootDirection = getShootDirection();
       diceBody.velocity.set(
         shootDirection.x * diceThrowVelocity,
@@ -359,6 +366,14 @@ function Scene(): JSX.Element {
       dice2.position.set(x2, y2, z2);
       diceBody.position.copy(dice.position);
       diceBody2.position.copy(dice2.position);
+    }
+
+    window.addEventListener('click', () => {
+      if (!controls.enabled) {
+        return
+      }
+
+      rollDice();
     })
 
     let animationLoop: number | null;
@@ -445,6 +460,11 @@ function Scene(): JSX.Element {
     }
 
     window.addEventListener('resize', onWindowResize);
+
+    setInterval(function() {
+      // TODO: Reset w move.
+      rollDice();
+    }, 2500);
 
     return () => {
       window.removeEventListener('resize', onWindowResize);

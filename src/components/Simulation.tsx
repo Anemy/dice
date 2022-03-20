@@ -3,7 +3,12 @@ import { css } from '@emotion/react';
 import { Scene } from './Scene';
 
 const simulationStyles = css({
-  color: 'rgb(50, 20, 200)',
+  // color: 'rgb(50, 20, 200)',
+  position: 'fixed',
+  top: 0,
+  left: 0,
+  bottom: 0,
+  right: 0,
 });
 
 function Simulation(): JSX.Element {
