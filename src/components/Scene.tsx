@@ -13,17 +13,45 @@ const diceRotationRandomness = 1;
 // const gravity = -9.82; // m/s
 const gravity = -9.82 * 2; // m/s
 
+/**
+ * 
+ * helper code:
+ * <!-- RHYS -->
+<script type="application/javascript">
+   // window.asset_url = "{{ '' | asset_url }}";
+   window.objAssetUrl = "{{ 'dice.obj' | asset_url }}";
+   window.mtlAssetUrl = "{{ 'dice.mtl' | asset_url }}";
+</script>
+<div id="root22"></div>
+<script src="{{ 'bundle.js' | asset_url }}" defer="defer"></script>
+
+
+ */
+
 function createCamera(): THREE.PerspectiveCamera {
+  // close range fov VVV
+  // const camera = new THREE.PerspectiveCamera(
+  //   10,// 75, // fov
+  //   window.innerWidth / window.innerHeight, // aspect ratio
+  //   0.1, // near
+  //   1000 // far
+  // );
+  // camera.position.z = 7;
+
+  // camera.position.y = 1.5;
+
   const camera = new THREE.PerspectiveCamera(
     75, // fov
     window.innerWidth / window.innerHeight, // aspect ratio
     0.1, // near
     1000 // far
   );
-  camera.position.z = 10;
+  camera.position.z = 7;
 
-  camera.position.y = 1;
+  camera.position.y = 1.5;
   // camera.position.x = -0.2;
+
+  camera.lookAt(0, 0, 0);
 
   return camera;
 }
@@ -237,6 +265,7 @@ function Scene(): JSX.Element {
               dice = child;
               dice2 = child.clone();
 
+
               // child.scale = 0.5;
               // dice.scale.set(0.5);
               // dice.scale.set(1);
@@ -284,6 +313,9 @@ function Scene(): JSX.Element {
           threeScene.add(dice2);
 
           threeScene.add(object);
+
+
+          // rollDice();
 
           console.log('loaded models');
         },
@@ -447,7 +479,7 @@ function Scene(): JSX.Element {
       // stats.update();
     }
 
-    controls.enabled = false;
+    // controls.enabled = false;
 
     // Start the loop.
     animate();
