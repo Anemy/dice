@@ -1,6 +1,6 @@
 import { css } from '@emotion/react';
 
-import { Scene } from './Scene';
+import { Scene } from './Cast';
 
 const simulationStyles = css({
   // color: 'rgb(50, 20, 200)',
