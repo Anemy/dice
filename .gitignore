@@ -4,3 +4,6 @@ build
 dist
 .DS_Store
 tmp
+dice-obj
+dice.mtl
+dice.obj

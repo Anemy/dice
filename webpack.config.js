@@ -31,7 +31,19 @@ module.exports = {
       'react-dom': '@hot-loader/react-dom',
     },
   },
+  devServer: {
+    static: {
+      directory: path.join(__dirname, 'public'),
+    },
+    // compress: true,
+    // port: 9000,
+  },
   plugins: [
-    new HtmlWebpackPlugin({ template: path.resolve(__dirname, 'index.html') }),
+    new HtmlWebpackPlugin({
+      template: path.resolve(__dirname, 'public', 'index.html'),
+      // static: {
+      //   directory: path.join(__dirname, 'public'),
+      // },
+    }),
   ],
 };
