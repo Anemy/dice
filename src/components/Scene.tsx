@@ -20,12 +20,11 @@ function createCube(): THREE.Mesh {
     color: 0x00ff00,
     wireframe: true,
   });
-  
+
   const cube = new THREE.Mesh(geometry, material);
 
   return cube;
 }
-
 
 function Scene(): JSX.Element {
   const sceneContainerRef = useRef<HTMLDivElement | null>(null);
@@ -34,17 +33,17 @@ function Scene(): JSX.Element {
     const threeScene = new THREE.Scene();
 
     const camera = createCamera();
-    
+
     const renderer = new THREE.WebGLRenderer();
     renderer.setSize(window.innerWidth, window.innerHeight);
     // document.body.appendChild(renderer.domElement);
     sceneContainerRef.current.appendChild(renderer.domElement);
-    
+
     const controls = new OrbitControls(camera, renderer.domElement);
-    
+
     const cube = createCube();
     threeScene.add(cube);
-    
+
     function render() {
       renderer.render(threeScene, camera);
     }
@@ -52,12 +51,12 @@ function Scene(): JSX.Element {
     let animationLoop: number | null;
     function animate() {
       animationLoop = requestAnimationFrame(animate);
-    
+
       cube.rotation.x += 0.01;
       cube.rotation.y += 0.01;
-    
+
       controls.update();
-    
+
       render();
     }
 
@@ -72,7 +71,7 @@ function Scene(): JSX.Element {
       // Might not need this extra render.
       render();
     }
-  
+
     window.addEventListener('resize', onWindowResize);
 
     return () => {
@@ -84,9 +83,7 @@ function Scene(): JSX.Element {
     };
   }, []);
 
-  return (
-    <div ref={sceneContainerRef} />
-  );
+  return <div ref={sceneContainerRef} />;
 }
 
 export { Scene };
