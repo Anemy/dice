@@ -14,7 +14,6 @@ const simulationStyles = css({
 function Simulation(): JSX.Element {
   return (
     <div css={simulationStyles}>
-      {/* <h1>Simulation</h1> */}
       <div>
         <Scene />
       </div>
