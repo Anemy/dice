@@ -12,14 +12,14 @@ type FacingSide = typeof sides[number]; // 'one' | 'two' | 'three' | 'four' | 'f
 
 const diceThrowVelocity = 15;
 const diceRotationRandomness = 1;
-const diceToMake = 1;
+const diceToMake = 2;
 const diceScale = 0.5;
 
 // This number indicates how long we wait for the velocities to get to near zero
 // before declaring the dice is stable/landed.
 // Currently it influences how long until the dice does the loaded swap
 // although that could be separated out or done differently.
-const stabilizeCheckArrayAmt = 20;
+const stabilizeCheckArrayAmt = 10;
 
 type Die = {
   dieGroup: THREE.Group; // Use a group to group the dots.
@@ -49,74 +49,58 @@ type Die = {
 
 // TODO: Need to calculate which side to push on to make it flip a direction.
 
-function getVelocityVectorToBumpDiceToLoadedFace(die: Die) {
+// Compute the force vector needed to rotate the die so that the
+// intendedFacingSideItem will be pointing up.
+function getVelocityVectorToBumpDiceToLoadedFace(die: Die): THREE.Vector3 {
   // TODO: Dedupe this call.
-  const facingSide = getTopFacingSideForQuaternion(die.physicsModel.quaternion);
+  const facingSide = getTopFacingSideForDie(die);
 
   const velocityBumpToRotate = 5;
 
   const quaternion = die.physicsModel.quaternion;
 
   debugQuaternion(quaternion);
+
+  const currentFacingSideItem = die.dieGroup.children.find(
+    child => child.name === facingSide
+  );
+  const intendedFacingSideItem = die.dieGroup.children.find(
+    child => child.name === die.intendedFacingSide
+  );
   
-  const loadedDieVelocityBump = {
-    x: 0,
-    z: 0,
-  };
+  // TODO: Reuse vector to not regenerate.
 
-  // Pushing x makes it go right,
-  // Pushing z makes it go towards cam.
+  const currentTopVector = new THREE.Vector3();
+  currentTopVector.setFromMatrixPosition(currentFacingSideItem.matrix);
+  currentTopVector.applyQuaternion(die.dieGroup.quaternion);
+  currentTopVector.normalize();
 
-  // Bump rotation based on facing side to get to loaded die position.
-  switch (facingSide) {
-    case 'one':
-      if (die.intendedFacingSide === 'three') {
-        loadedDieVelocityBump.z = -velocityBumpToRotate;
-      } else {
-        loadedDieVelocityBump.x = -velocityBumpToRotate;
-      }
-    break;
-    case 'two':
-      if (die.intendedFacingSide === 'three') {
-        loadedDieVelocityBump.x = -velocityBumpToRotate;
-      } else {
-        // Assume four for now.
-        loadedDieVelocityBump.z = -velocityBumpToRotate;
-      }
-    break;
-    case 'three':
-      // If this is a 3 dice do nothing.
-      if (die.intendedFacingSide === 'three') {
-        break;
-      }
+  const intendedFaceCurrentVector = new THREE.Vector3();
+  intendedFaceCurrentVector.setFromMatrixPosition(intendedFacingSideItem.matrix);
+  intendedFaceCurrentVector.applyQuaternion(die.dieGroup.quaternion);
+  intendedFaceCurrentVector.normalize();
 
-      loadedDieVelocityBump.z = -velocityBumpToRotate;
-    break;
-    case 'four':
-      // If this is a 4 dice do nothing.
-      if (die.intendedFacingSide === 'four') {
-        break;
-      }
+  const crossProductVector = intendedFaceCurrentVector.clone();
+  crossProductVector.cross(currentTopVector);
 
-      loadedDieVelocityBump.z = velocityBumpToRotate;
-    break;
-    case 'five':
-      if (die.intendedFacingSide === 'three') {
-        loadedDieVelocityBump.z = -velocityBumpToRotate;
-      } else {
-        loadedDieVelocityBump.x = velocityBumpToRotate;
-      }
-    break;
-    case 'six':
-      if (die.intendedFacingSide === 'three') {
-        loadedDieVelocityBump.z = -velocityBumpToRotate;
-      } else {
-        loadedDieVelocityBump.x = -velocityBumpToRotate;
-      }
-    break;
+  crossProductVector.cross(currentTopVector);
+
+  crossProductVector.multiplyScalar(velocityBumpToRotate);
+
+  if (Math.abs(Math.abs(currentTopVector.x) - Math.abs(intendedFaceCurrentVector.x)) < 0.1
+    && Math.abs(Math.abs(currentTopVector.z) - Math.abs(intendedFaceCurrentVector.z)) < 0.1
+  ) {
+    // The side we want the die to be on is opposite so we full flip.
+    const directionToSpin = Math.random() > 0.5 ? 1 : -1;
+
+    return new THREE.Vector3(
+      2 * directionToSpin,
+      5,
+      2 * directionToSpin
+    );
   }
 
-  return loadedDieVelocityBump;
+  return crossProductVector;
 }
 
 function createCamera(): THREE.PerspectiveCamera {
@@ -176,20 +160,18 @@ function debugQuaternion(quaternion: CANNON.Quaternion) {
 
 // This returns the number 1-6 that is facing up based on the die's orientation.
 // This is coupled with the initial orientation of the mesh/material.
-function getTopFacingSideForDie(die: Die): FacingSide | -1 {
-
-  die.dieGroup.updateMatrixWorld(true);
-  
+function getTopFacingSideForDie(die: Die): FacingSide | -1 {  
   let topFacingSide: FacingSide | -1 = -1;
   let topFacingSideYPos = 0;
   const vector = new THREE.Vector3();
 
   die.dieGroup.children.forEach(dieItem => {
     if (sides.includes(dieItem.name as FacingSide)) {
-      const dieItemClone = dieItem.clone();
-
-      // Apply the group rotation + position for determining side.
-      vector.setFromMatrixPosition(dieItemClone.matrixWorld);
+      // Instead of keeping around meshes and objects for each face on the die
+      // we could instead use vector for each side here and apply the die's
+      // rotation to compute the upwards facing side. It would be more
+      // performant. In this case we're using the dots to help debugging.
+      vector.setFromMatrixPosition(dieItem.matrixWorld);
 
       if (vector.y > topFacingSideYPos) {
         topFacingSide = dieItem.name as FacingSide;
@@ -203,9 +185,9 @@ function getTopFacingSideForDie(die: Die): FacingSide | -1 {
 
 // This returns the number 1-6 that is facing up based on the mesh's quaternion (rotation).
 // This is paired with the initial orientation of the mesh/material.
-function getTopFacingSideForQuaternion(quaternion: CANNON.Quaternion): FacingSide | -1 {
-  // debugQuaternion(quaternion);
-
+function getTopFacingSideForQuaternion(
+  quaternion: CANNON.Quaternion
+): FacingSide | -1 {
   const orientationThreshold = 0.001;
   if (Math.abs(quaternion.w) < orientationThreshold) {
     return 'four';
@@ -246,7 +228,7 @@ function Scene(): JSX.Element {
     const world = new CANNON.World();
     world.gravity.set(0, -9.82, 0); // m/s²
 
-    // Plane
+    // Create the physics ground plane.
     const planeShape = new CANNON.Plane();
     const planeBody = new CANNON.Body({ mass: 0 });
     planeBody.addShape(planeShape);
@@ -255,6 +237,39 @@ function Scene(): JSX.Element {
       -Math.PI / 2
     );
     world.addBody(planeBody);
+
+    // THREE.js plane that renders for debugging.
+    // const geometry = new THREE.PlaneGeometry(10, 10);
+    // const material = new THREE.MeshBasicMaterial({ color: 0xaaaa00, side: THREE.DoubleSide });
+    // const plane = new THREE.Mesh(geometry, material);
+    // plane.quaternion.setFromAxisAngle(
+    //   new THREE.Vector3(1, 0, 0),
+    //   -Math.PI / 2
+    // );
+    // threeScene.add(plane);
+
+    // Create a backboard so the dice don't roll forever.
+    // const planeBackboardBody = new CANNON.Body({ mass: 0 });
+    // planeBackboardBody.addShape(planeShape);
+    // planeBackboardBody.position.z -= 10;
+    // world.addBody(planeBackboardBody);
+    // And sideboards for the sides.
+    // const planeSideboardBodyLeft = new CANNON.Body({ mass: 0 });
+    // planeSideboardBodyLeft.addShape(planeShape);
+    // planeSideboardBodyLeft.position.x -= 20;
+    // planeSideboardBodyLeft.quaternion.setFromAxisAngle(
+    //   new CANNON.Vec3(0, 1, 0),
+    //   -Math.PI / 2
+    // );
+    // world.addBody(planeSideboardBodyLeft)
+    // const planeSideboardBodyRight = new CANNON.Body({ mass: 0 });
+    // planeSideboardBodyRight.addShape(planeShape);
+    // planeSideboardBodyRight.position.x += 10;
+    // planeSideboardBodyRight.quaternion.setFromAxisAngle(
+    //   new CANNON.Vec3(0, 1, 0),
+    //   -Math.PI / 2
+    // );
+    // world.addBody(planeSideboardBodyRight)
 
     const camera = createCamera();
 
@@ -272,7 +287,7 @@ function Scene(): JSX.Element {
     document.body.appendChild(stats.dom)
 
     const controls = new OrbitControls(camera, renderer.domElement);
-    // controls.enabled = false;
+    controls.enabled = false;
 
     const diceObjFile = (window as any).objAssetUrl || 'dice.obj';
     const diceMtlFile = (window as any).mtlAssetUrl || 'dice.mtl';
@@ -352,7 +367,7 @@ function Scene(): JSX.Element {
           physicsRenderMesh,
           // When the delta gets low then we know it's bout stable.
           velocityTotalsForStabilizationCheck,
-          intendedFacingSide: 'four' // ((i + offsetFacingSide) % 2 === 0) ? 'three' : 'four'
+          intendedFacingSide: ((i + offsetFacingSide) % 2 === 0) ? 'three' : 'four'
         };
 
         world.addBody(physicsModel);
@@ -405,7 +420,7 @@ function Scene(): JSX.Element {
       const newDiceRotationRandomness =
         diceRotationRandomness * Math.random() + diceRotationRandomness * 0.5;
 
-      dice.forEach((die: Die) => {
+      dice.forEach((die: Die, dieIndex: number) => {
         // Reset some of the helpers.
         die.didRotate = false;
 
@@ -428,8 +443,16 @@ function Scene(): JSX.Element {
 
         // Move the dice outside the player/camera sphere.
         const outRadius = 1;
+        // Offset the 2nd die to make it rotate nice and not collide on initial.
+        // const offset = (diceToMake > 2 && dieIndex === 1) ?  : 0;
+        let offset = 0;
+        if (dieIndex === 0) {
+          offset = -1;
+        } else if (dieIndex === 2) {
+          offset = 1;
+        }
         const x =
-          die.physicsModel.position.x +
+          die.physicsModel.position.x + offset +
           shootDirection.x * (outRadius * 1.02 + outRadius);
         const y =
           die.physicsModel.position.y +
@@ -437,6 +460,12 @@ function Scene(): JSX.Element {
         const z =
           die.physicsModel.position.z +
           shootDirection.z * (outRadius * 1.02 + outRadius);
+
+        // Offset the 2nd die to make it rotate nice and not collide on initial.
+        // const offset = 2;
+        // const x2 = die.physicsModel.position.x + Math.random() + shootDirection.x * offset * (outRadius * 1.02 + outRadius);
+        // const y2 = die.physicsModel.position.y + Math.random() + shootDirection.y * offset * (outRadius * 1.02 + outRadius);
+        // const z2 = die.physicsModel.position.z + Math.random() + shootDirection.z * offset * (outRadius * 1.02 + outRadius);
 
         die.physicsModel.position.x = x;
         die.physicsModel.position.y = y;
@@ -466,17 +495,6 @@ function Scene(): JSX.Element {
           Math.random() *
           newDiceRotationRandomness *
           (Math.random() > 0.5 ? 1 : -1);
-
-
-        // TODO: Offset the second die to make the rotations nice.
-        // const offset = 2;
-        // const x2 = die.physicsModel.position.x + Math.random() + shootDirection.x * offset * (outRadius * 1.02 + outRadius);
-        // const y2 = die.physicsModel.position.y + Math.random() + shootDirection.y * offset * (outRadius * 1.02 + outRadius);
-        // const z2 = die.physicsModel.position.z + Math.random() + shootDirection.z * offset * (outRadius * 1.02 + outRadius);
-
-        // die.mesh.rotation.x += 5;
-
-        // die.mesh.position.copy(die.physicsModel.position as any);
 
         die.dieGroup.rotation.x += 5;
         die.dieGroup.position.copy(die.physicsModel.position as any);
@@ -527,16 +545,10 @@ function Scene(): JSX.Element {
           die.physicsRenderMesh.position.y = die.physicsModel.position.y;
           die.physicsRenderMesh.position.z = die.physicsModel.position.z;
 
-          // die.lastDelta = Math.abs(die.physicsModel.velocity.x) + Math.abs(die.physicsModel.velocity.x);
           // Not a true total it's just x and z.
           const velocityTotal = Math.abs(die.physicsModel.velocity.x) + Math.abs(die.physicsModel.velocity.z);
           die.velocityTotalsForStabilizationCheck.unshift(velocityTotal);
           die.velocityTotalsForStabilizationCheck.pop();
-
-          // if (Math.abs(die.physicsModel.velocity.x) + Math.abs(die.physicsModel.velocity.y) + Math.abs(die.physicsModel.velocity.z) < 0.00001) {
-          //   // die.physicsModel.velocity.y = 1;
-          //   console.log('no velocity');
-          // }
 
           const totalForLastVelocities = die.velocityTotalsForStabilizationCheck.reduce((
             previousVal, currentVal
@@ -544,7 +556,7 @@ function Scene(): JSX.Element {
           if (totalForLastVelocities < 0.2) {
             // const facingSide = getTopFacingSideForQuaternion(die.physicsModel.quaternion);
             const facingSide = getTopFacingSideForDie(die);
-            console.log(facingSide);
+            // console.log(facingSide);
 
             if (facingSide === -1) {
               // If the facing side is -1 it means we couldn't determine the
@@ -552,24 +564,42 @@ function Scene(): JSX.Element {
               return;
             }
 
-            if (die.didRotate) {
+            // For only running it once:
+            // if (die.didRotate) {
+            //   return;
+            // }
+
+            if (facingSide === die.intendedFacingSide) {
+              if (!die.didRotate) {
+                console.log('Landed without needing adjustment on', facingSide);
+                die.didRotate = true;
+              }
               return;
             }
-            
+
+            die.didRotate = true;
+
             // debugQuaternion(die.physicsModel.quaternion);
 
             const loadedDieBump = getVelocityVectorToBumpDiceToLoadedFace(die);
             console.log('Applying loaded die bump', loadedDieBump);
-            // die.physicsModel.velocity.x = loadedDieBump.x;
-            // die.physicsModel.velocity.z = loadedDieBump.z;
+            die.physicsModel.velocity.x = loadedDieBump.x;
+            die.physicsModel.velocity.y = loadedDieBump.y;
+            die.physicsModel.velocity.z = loadedDieBump.z;
 
-            if (facingSide !== die.intendedFacingSide) {
-              console.log('Attempted loaded roll from', facingSide, 'to', die.intendedFacingSide);
-            } else {
-              // Landed first try, no action needed.
-              console.log('Landed without needing adjustment on', facingSide);
-            }
-            die.didRotate = true;
+            // const dir = new THREE.Vector3( 1, 2, 0 );
+
+            // Debug render for the force we apply to the die to rotate.
+            // Normalize the direction vector (convert to vector of length 1).
+            loadedDieBump.normalize();
+            // const origin = new THREE.Vector3(0, 0, 0);
+            const origin = die.dieGroup.position;
+            const length = 2;
+            const hex = 0xbb00bb;
+            const arrowHelper = new THREE.ArrowHelper(loadedDieBump, origin, length, hex);
+            threeScene.add(arrowHelper);
+
+            console.log('Loaded roll from', facingSide, 'to', die.intendedFacingSide);
           }
         });
 
