@@ -1,0 +1,39 @@
+WIP - mostly notes, might make a blog post.
+
+Wanted to create a loaded dice simulation for the website.
+
+To do this we used THREE.js to manage the 3d rendering of the dice.
+For the physics engine we used CANNON.js
+
+First step is rendering dice, a former colleague of mine would always say
+"Let's get some pixels". To render the dice we could use a basic polygon cube as a
+first step.
+
+Next we want to apply gravity to the die and watch it fall to the ground.
+We'll also need a ground. We use a THREE.js Plane to do this.
+
+To cast the die we add some random forces on initialization.
+
+However we wanted something which we could more easily
+apply materials to and have things like concave spaces where the dice number is displayed.
+In order for this level of detail we'll need a 3d model with a material.
+With a material we can more easily configure things like colors and how light impacts the displayed object.
+We found a creative commons 3d model on a website and went with that.
+There are a number of websites to find something like this on.
+
+Next we needed to know what number is facing up on the dice once it has stabilized.
+
+To do this we need to compute the orientation of the die.
+We can compute the orientation of the die by attaching points to each side of the die
+and then performing all of the physics on the entire group, die and points.
+After the dice is rotated we apply the rotation to these points and calculate
+the point with the highest y position. That point indicates the top facing side.
+
+// TODO: Update code to not compute die pos all the time?
+
+
+
+// TODO?
+Next blog post we'll investigate how we pulled off the 3d rendering of an image
+on a mug for Artsable.com - user submitted code.
+
