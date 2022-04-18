@@ -10,13 +10,19 @@ import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader';
 const sides = ['five', 'three', 'one', 'two', 'six', 'four'] as const;
 type FacingSide = typeof sides[number];
 
-const diceThrowVelocity = 15;
+type diceCastLocations = 'sides' | 'from-camera';
+const castLocation: diceCastLocations = Math.random() > 0.5 ? 'sides' : 'from-camera';
+
+const diceThrowVelocity = castLocation === 'sides' ? 25 : 15;
 const diceRotationRandomness = 1;
-const diceToMake = 2;
-const diceScale = 0.5;
+const diceAngularRotationAmt = 10; // Only used in 'sides' currently.
+const diceToMake = 2; // 100;
+const diceScale = 0.5; // Not totally used.
+// Height from which die are cast.
+const castHeight = 7;
 
 // Useful for seeing the forces applied to die and the face markers.
-const debugView = true;
+const debugView = false;
 
 // This number indicates how long we wait for the velocities to get to near zero
 // before declaring the dice is stable/landed.
@@ -114,7 +120,7 @@ function createCamera(): THREE.PerspectiveCamera {
     1000 // far
   );
   camera.position.z = 6; // 7;
-  camera.position.y = 7; // 1.5;
+  camera.position.y = castHeight; // 1.5;
   // camera.position.x = -0.2;
   camera.lookAt(0, 0, 0);
 
@@ -243,7 +249,286 @@ function createPlanes(): [CANNON.Body, THREE.Mesh, CANNON.Body, CANNON.Body, CAN
   return [planeBody, debugPlane, planeBackboardBody, planeBackboardFrontBody, planeSideboardBodyLeft, planeSideboardBodyRight];
 }
 
-function startDiceSimulation(htmlElementToAttachTo: HTMLDivElement): () => void {
+
+function createDice(diceModel: THREE.Mesh) {
+  const dice = [];
+
+  const normalMaterial = new THREE.MeshNormalMaterial();
+
+  const offsetFacingSide = Math.floor(Math.random() * 20);
+
+  for (let i = 0; i < diceToMake; i++) {
+    const dieShape = new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5));
+    // Cube physics model for the dice (not rendered, used behind the scenes)
+    const physicsModel = new CANNON.Body({ mass: 1 });
+    physicsModel.addShape(dieShape);
+
+    // Dice render model
+    // (placed where the physics model is after collisions and gravity are applied).
+    const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
+    const physicsRenderMesh = new THREE.Mesh(cubeGeometry, normalMaterial);
+    // physicsRenderMesh.castShadow = true;
+
+    const mesh = diceModel.clone();
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
+    physicsModel.position.x = mesh.position.x;
+    physicsModel.position.y = mesh.position.y;
+    physicsModel.position.z = mesh.position.z;
+
+    const velocityTotalsForStabilizationCheck = [];
+    for (let k = 0; k < stabilizeCheckArrayAmt; k++) {
+      velocityTotalsForStabilizationCheck.push(100);;
+    }
+
+    const createSphereMesh = (sphereSide: FacingSide) => {
+      const sphereGeometry = new THREE.SphereGeometry(0.05, 5, 5);
+      const sphereMaterial = new THREE.MeshBasicMaterial({
+        color: 0x3030e6
+      });
+      const sphereMesh = new THREE.Mesh(sphereGeometry, sphereMaterial);
+      sphereMesh.name = sphereSide;
+      return sphereMesh;
+    }
+
+    // Create 6 points.
+    // We use attach these points to the die and use them to determine
+    // the orientation, which tells us the upwards facing value.
+    const spheres: THREE.Mesh[] = [];
+    for (let k = 0; k < 6; k++) {
+      spheres.push(createSphereMesh(sides[k]));
+      spheres[k].visible = debugView;
+    }
+    spheres[0].translateX(diceScale);
+    spheres[1].translateX(-diceScale);
+    spheres[2].translateZ(diceScale);
+    spheres[3].translateZ(-diceScale);
+    spheres[4].translateY(diceScale);
+    spheres[5].translateY(-diceScale);
+
+    const dieGroup = new THREE.Group();
+
+    spheres.forEach(sphere => dieGroup.add(sphere));
+    dieGroup.add(mesh);
+
+    const die: Die = {
+      dieGroup,
+      mesh,
+      physicsModel,
+      physicsRenderMesh,
+      // When the delta gets low then we know it's bout stable.
+      velocityTotalsForStabilizationCheck,
+      intendedFacingSide: ((i + offsetFacingSide) % 2 === 0) ? 'three' : 'four'
+    };
+
+    dice.push(die);
+  }
+
+  console.log('Created', diceToMake, 'dice');
+  return dice;
+}
+
+async function loadDieMesh(): Promise<THREE.Mesh> {
+  const diceObjFile = (window as any).objAssetUrl || 'dice.obj';
+  const diceMtlFile = (window as any).mtlAssetUrl || 'dice.mtl';
+
+  const mtlLoader = new MTLLoader();
+
+  // const loadMtlFile = promisify(mtlLoader.load);
+
+  const mesh: THREE.Mesh = await new Promise((resolve, reject) => {
+    mtlLoader.load(
+      diceMtlFile,
+      (materials) => {
+        materials.preload();
+    
+        console.log('Loaded die materials.');
+    
+        const objLoader = new OBJLoader();
+        objLoader.setMaterials(materials).load(
+          diceObjFile,
+          (object: THREE.Group) => {
+            object.traverse(function (child) {
+              // This is coupled with the model from the .obj file.
+              if ((child as THREE.Mesh).isMesh) {
+                console.log('Loaded die mesh', child);
+
+                resolve(child as THREE.Mesh);
+              }
+            });
+          },
+          (xhr: ProgressEvent<EventTarget>) => {
+            console.log(`Obj ${(xhr.loaded / xhr.total) * 100}% loaded`);
+          },
+          reject
+        );
+      }, 
+      (xhr: ProgressEvent<EventTarget>) => {
+        console.log(`Mtl ${(xhr.loaded / xhr.total) * 100}% loaded`);
+      },
+      reject
+    );
+  });
+  
+  return mesh;
+}
+
+function throwDiceFromCamera(dice: Die[], camera: THREE.Camera) {
+  const newVelocity =
+    diceThrowVelocity * Math.random() + diceThrowVelocity * 0.25;
+  const newDiceRotationRandomness =
+    diceRotationRandomness * Math.random() + diceRotationRandomness * 0.5;
+
+  dice.forEach((die: Die, dieIndex: number) => {
+    // Reset some of the helpers.
+    die.didRotate = false;
+
+    function getShootDirection() {
+      const vector = new THREE.Vector3(0, 0, 1);
+      vector.unproject(camera);
+      const ray = new THREE.Ray(
+        die.physicsModel.position as any,
+        vector.sub(die.physicsModel.position as any).normalize()
+      );
+      return ray.direction;
+    }
+
+    const shootDirection = getShootDirection();
+
+    // Move the die to the camera.
+    die.physicsModel.position.x = camera.position.x;
+    die.physicsModel.position.y = camera.position.y;
+    die.physicsModel.position.z = camera.position.z;
+
+    // Move the dice outside the player/camera sphere.
+    const outRadius = 1;
+    // Offset the 2nd die to make it rotate nice and not collide on initial.
+    // const offset = (diceToMake > 2 && dieIndex === 1) ?  : 0;
+    let offset = 0;
+    if (dieIndex === 0) {
+      offset = -1;
+    } else if (dieIndex === 2) {
+      offset = 1;
+    }
+    const x =
+      die.physicsModel.position.x + offset +
+      shootDirection.x * (outRadius * 1.02 + outRadius);
+    const y =
+      die.physicsModel.position.y +
+      shootDirection.y * (outRadius * 1.02 + outRadius);
+    const z =
+      die.physicsModel.position.z +
+      shootDirection.z * (outRadius * 1.02 + outRadius);
+
+    die.physicsModel.position.x = x;
+    die.physicsModel.position.y = y;
+    die.physicsModel.position.z = z;
+
+    // Cast the dice.
+    die.physicsModel.velocity.set(
+      shootDirection.x * newVelocity,
+      shootDirection.y * newVelocity,
+      shootDirection.z * newVelocity
+    );
+
+    // Rotate it randomly.
+    die.physicsModel.quaternion.y =
+      Math.random() *
+      newDiceRotationRandomness *
+      (Math.random() > 0.5 ? 1 : -1);
+    die.physicsModel.quaternion.x =
+      Math.random() *
+      newDiceRotationRandomness *
+      (Math.random() > 0.5 ? 1 : -1);
+    die.physicsModel.quaternion.z =
+      Math.random() *
+      newDiceRotationRandomness *
+      (Math.random() > 0.5 ? 1 : -1);
+    die.physicsModel.quaternion.w =
+      Math.random() *
+      newDiceRotationRandomness *
+      (Math.random() > 0.5 ? 1 : -1);
+
+    die.dieGroup.rotation.x += 5;
+    die.dieGroup.position.copy(die.physicsModel.position as any);
+  });
+}
+
+function throwDiceFromSides(dice: Die[]) {
+  const newVelocity =
+    diceThrowVelocity * Math.random() + diceThrowVelocity * 0.25;
+  const newDiceRotationRandomness =
+    diceRotationRandomness * Math.random() + diceRotationRandomness * 0.5;
+
+  dice.forEach((die: Die, dieIndex: number) => {
+    // Reset some of the helpers.
+    die.didRotate = false;
+
+    // type StartSides = 'right' | 'left';
+    // const startSide = shootDirection
+    const startSide = dieIndex % 2 === 0 ? 'left' : 'right';
+
+    const shootDirection = new THREE.Vector3(startSide === 'left' ? 1 : -1, 0, 0);
+
+    if (startSide === 'left') {
+      die.physicsModel.position.x = -10;
+      die.physicsModel.position.y = castHeight;
+      die.physicsModel.position.z = 0;
+    } else {
+      die.physicsModel.position.x = 10;
+      die.physicsModel.position.y = castHeight;
+      die.physicsModel.position.z = 0;
+    }
+
+    // Cast the dice.
+    die.physicsModel.velocity.set(
+      shootDirection.x * newVelocity,
+      shootDirection.y * newVelocity,
+      shootDirection.z * newVelocity
+    );
+
+    // Rotate it randomly.
+    die.physicsModel.quaternion.y =
+      Math.random() *
+      newDiceRotationRandomness *
+      (Math.random() > 0.5 ? 1 : -1);
+    die.physicsModel.quaternion.x =
+      Math.random() *
+      newDiceRotationRandomness *
+      (Math.random() > 0.5 ? 1 : -1);
+    die.physicsModel.quaternion.z =
+      Math.random() *
+      newDiceRotationRandomness *
+      (Math.random() > 0.5 ? 1 : -1);
+    die.physicsModel.quaternion.w =
+      Math.random() *
+      newDiceRotationRandomness *
+      (Math.random() > 0.5 ? 1 : -1);
+
+    die.physicsModel.angularVelocity = new CANNON.Vec3(
+      Math.random() * (Math.random() > 0.5 ? 1 : -1) * diceAngularRotationAmt,
+      Math.random() * (Math.random() > 0.5 ? 1 : -1) * diceAngularRotationAmt,
+      Math.random() * (Math.random() > 0.5 ? 1 : -1) * diceAngularRotationAmt
+    );
+
+    die.dieGroup.rotation.x += 5;
+    die.dieGroup.position.copy(die.physicsModel.position as any);
+  });
+}
+
+function rollDice(dice: Die[], camera: THREE.Camera) {
+  switch(castLocation) {
+    case 'from-camera':
+      throwDiceFromCamera(dice, camera);
+      break;
+    case 'sides':
+      throwDiceFromSides(dice);
+      break;
+  }
+}
+
+async function startDiceSimulation(htmlElementToAttachTo: HTMLDivElement): Promise<() => void | void> {
   const mouse = {
     x: 0,
     y: 0
@@ -341,211 +626,30 @@ function startDiceSimulation(htmlElementToAttachTo: HTMLDivElement): () => void 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enabled = debugView;
 
-  const diceObjFile = (window as any).objAssetUrl || 'dice.obj';
-  const diceMtlFile = (window as any).mtlAssetUrl || 'dice.mtl';
-
-  const mtlLoader = new MTLLoader();
-
-  const dice: Die[] = [];
-
-  function createDice(diceModel: THREE.Mesh) {
-    // Clear old dice.
-    // while (dice.length) {
-    //   dice.pop();
-    // }
-    const normalMaterial = new THREE.MeshNormalMaterial();
-
-    const offsetFacingSide = Math.floor(Math.random() * 20);
-
-    for (let i = 0; i < diceToMake; i++) {
-      const dieShape = new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5));
-      // Cube physics model for the dice (not rendered, used behind the scenes)
-      const physicsModel = new CANNON.Body({ mass: 1 });
-      physicsModel.addShape(dieShape);
-
-      // Dice render model
-      // (placed where the physics model is after collisions and gravity are applied).
-      const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
-      const physicsRenderMesh = new THREE.Mesh(cubeGeometry, normalMaterial);
-      // physicsRenderMesh.castShadow = true;
-
-      const mesh = diceModel.clone();
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-
-      physicsModel.position.x = mesh.position.x;
-      physicsModel.position.y = mesh.position.y;
-      physicsModel.position.z = mesh.position.z;
-
-      const velocityTotalsForStabilizationCheck = [];
-      for (let k = 0; k < stabilizeCheckArrayAmt; k++) {
-        velocityTotalsForStabilizationCheck.push(100);;
-      }
-
-      const createSphereMesh = (sphereSide: FacingSide) => {
-        const sphereGeometry = new THREE.SphereGeometry(0.05, 5, 5);
-        const sphereMaterial = new THREE.MeshBasicMaterial({
-          color: 0x3030e6
-        });
-        const sphereMesh = new THREE.Mesh(sphereGeometry, sphereMaterial);
-        sphereMesh.name = sphereSide;
-        return sphereMesh;
-      }
-
-      // Create 6 points.
-      // We use attach these points to the die and use them to determine
-      // the orientation, which tells us the upwards facing value.
-      const spheres: THREE.Mesh[] = [];
-      for (let k = 0; k < 6; k++) {
-        spheres.push(createSphereMesh(sides[k]));
-        spheres[k].visible = debugView;
-      }
-      spheres[0].translateX(diceScale);
-      spheres[1].translateX(-diceScale);
-      spheres[2].translateZ(diceScale);
-      spheres[3].translateZ(-diceScale);
-      spheres[4].translateY(diceScale);
-      spheres[5].translateY(-diceScale);
-
-      const dieGroup = new THREE.Group();
-
-      spheres.forEach(sphere => dieGroup.add(sphere));
-      dieGroup.add(mesh);
-
-      const die: Die = {
-        dieGroup,
-        mesh,
-        physicsModel,
-        physicsRenderMesh,
-        // When the delta gets low then we know it's bout stable.
-        velocityTotalsForStabilizationCheck,
-        intendedFacingSide: ((i + offsetFacingSide) % 2 === 0) ? 'three' : 'four'
-      };
-
-      world.addBody(physicsModel);
-      threeScene.add(dieGroup);
-      dice.push(die);
-    }
-
-    console.log('Created', diceToMake, 'dice');
+  let dieMesh: THREE.Mesh;
+  try {
+    dieMesh = await loadDieMesh();
+  } catch (err) {
+    console.error('Unable to load dice assets, falling back to no render.');
+    console.error(err);
+    return;
   }
 
-  mtlLoader.load(diceMtlFile, (materials) => {
-    materials.preload();
+  const dice: Die[] = createDice(dieMesh);
 
-    console.log('loaded materials');
-
-    const objLoader = new OBJLoader();
-    objLoader.setMaterials(materials).load(
-      diceObjFile,
-      (object: THREE.Group) => {
-        object.traverse(function (child) {
-          if ((child as THREE.Mesh).isMesh) {
-            // This is coupled with the model from the .obj file.
-            createDice(child as THREE.Mesh);
-
-            console.log('loaded mesh', child);
-          }
-        });
-
-        rollDice();
-      },
-      (xhr: ProgressEvent<EventTarget>) => {
-        console.log(`${(xhr.loaded / xhr.total) * 100}% loaded`);
-      },
-      (error: ErrorEvent) => {
-        console.log(error);
-      }
-    );
+  dice.forEach(die => {
+    world.addBody(die.physicsModel);
+    threeScene.add(die.dieGroup);
   });
+
+  // Get the dice their initial spin and trajectory.
+  rollDice(dice, camera);
 
   const lights = createLights();
   lights.map((light) => threeScene.add(light));
 
   function render() {
     renderer.render(threeScene, camera);
-  }
-
-  function rollDice() {
-    const newVelocity =
-      diceThrowVelocity * Math.random() + diceThrowVelocity * 0.25;
-    const newDiceRotationRandomness =
-      diceRotationRandomness * Math.random() + diceRotationRandomness * 0.5;
-
-    dice.forEach((die: Die, dieIndex: number) => {
-      // Reset some of the helpers.
-      die.didRotate = false;
-
-      function getShootDirection() {
-        const vector = new THREE.Vector3(0, 0, 1);
-        vector.unproject(camera);
-        const ray = new THREE.Ray(
-          die.physicsModel.position as any,
-          vector.sub(die.physicsModel.position as any).normalize()
-        );
-        return ray.direction;
-      }
-
-      const shootDirection = getShootDirection();
-
-      // Move the die to the camera.
-      die.physicsModel.position.x = camera.position.x;
-      die.physicsModel.position.y = camera.position.y;
-      die.physicsModel.position.z = camera.position.z;
-
-      // Move the dice outside the player/camera sphere.
-      const outRadius = 1;
-      // Offset the 2nd die to make it rotate nice and not collide on initial.
-      // const offset = (diceToMake > 2 && dieIndex === 1) ?  : 0;
-      let offset = 0;
-      if (dieIndex === 0) {
-        offset = -1;
-      } else if (dieIndex === 2) {
-        offset = 1;
-      }
-      const x =
-        die.physicsModel.position.x + offset +
-        shootDirection.x * (outRadius * 1.02 + outRadius);
-      const y =
-        die.physicsModel.position.y +
-        shootDirection.y * (outRadius * 1.02 + outRadius);
-      const z =
-        die.physicsModel.position.z +
-        shootDirection.z * (outRadius * 1.02 + outRadius);
-
-      die.physicsModel.position.x = x;
-      die.physicsModel.position.y = y;
-      die.physicsModel.position.z = z;
-
-      // Cast the dice.
-      die.physicsModel.velocity.set(
-        shootDirection.x * newVelocity,
-        shootDirection.y * newVelocity,
-        shootDirection.z * newVelocity
-      );
-
-      // Rotate it randomly.
-      die.physicsModel.quaternion.y =
-        Math.random() *
-        newDiceRotationRandomness *
-        (Math.random() > 0.5 ? 1 : -1);
-      die.physicsModel.quaternion.x =
-        Math.random() *
-        newDiceRotationRandomness *
-        (Math.random() > 0.5 ? 1 : -1);
-      die.physicsModel.quaternion.z =
-        Math.random() *
-        newDiceRotationRandomness *
-        (Math.random() > 0.5 ? 1 : -1);
-      die.physicsModel.quaternion.w =
-        Math.random() *
-        newDiceRotationRandomness *
-        (Math.random() > 0.5 ? 1 : -1);
-
-      die.dieGroup.rotation.x += 5;
-      die.dieGroup.position.copy(die.physicsModel.position as any);
-
-    });
   }
 
   let animationLoop: number | null;
@@ -625,15 +729,17 @@ function startDiceSimulation(htmlElementToAttachTo: HTMLDivElement): () => void 
       die.physicsModel.velocity.y = loadedDieBump.y;
       die.physicsModel.velocity.z = loadedDieBump.z;
 
-      // Debug render for the force we apply to the die to rotate.
-      // Normalize the direction vector (convert to vector of length 1).
-      loadedDieBump.normalize();
-      // const origin = new THREE.Vector3(0, 0, 0);
-      const origin = die.dieGroup.position;
-      const length = 2;
-      const hex = 0xbb00bb;
-      const arrowHelper = new THREE.ArrowHelper(loadedDieBump, origin, length, hex);
-      threeScene.add(arrowHelper);
+      if (debugView) {
+        // Debug render for the force we apply to the die to rotate.
+        // Normalize the direction vector (convert to vector of length 1).
+        loadedDieBump.normalize();
+        // const origin = new THREE.Vector3(0, 0, 0);
+        const origin = die.dieGroup.position;
+        const length = 2;
+        const hex = 0xbb00bb;
+        const arrowHelper = new THREE.ArrowHelper(loadedDieBump, origin, length, hex);
+        threeScene.add(arrowHelper);
+      }
 
       console.log('Loaded roll from', facingSide, 'to', die.intendedFacingSide);
     });
@@ -661,7 +767,7 @@ function startDiceSimulation(htmlElementToAttachTo: HTMLDivElement): () => void 
     }
 
     // Cast the dice on click.
-    rollDice();
+    rollDice(dice, camera);
   }
 
   let mouseVector = new THREE.Vector3(mouse.x, mouse.y, 0.5);
@@ -727,9 +833,27 @@ function Scene(): JSX.Element {
   const sceneContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    const cleanupSimulation = startDiceSimulation(sceneContainerRef.current);
+    let unmounted = false;
+    let cleanupSimulation: () => void;
 
-    return cleanupSimulation;
+    async function startSimulation() {
+      cleanupSimulation = await startDiceSimulation(sceneContainerRef.current);
+
+      if (unmounted && cleanupSimulation) {
+        // If we finish loading after we've already unmounted we can cleanup
+        // and return.
+        cleanupSimulation();
+      }
+    }
+
+    void startSimulation();
+
+    return () => {
+      unmounted = true;
+      if (cleanupSimulation) {
+        cleanupSimulation();
+      }
+    };
   }, []);
 
   return <div ref={sceneContainerRef} />;
