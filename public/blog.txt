@@ -31,6 +31,27 @@ the point with the highest y position. That point indicates the top facing side.
 
 // TODO: Update code to not compute die pos all the time?
 
+This approach worked most of the time, and had an interesting look. Sometimes the dice would run into each other and be unable to rotate to their intended side.
+Ultimately we decided this method seemed a little too 'loaded' and cartoonish.
+
+What we wanted to do was have the dice always land on their intended sides without the extra push force at the end.
+We had two options of how to do this:
+1. Math it up and create an equation that would always land the dice with their intended side up, this could hard to do with the possible collisions involved.
+2. Run the random simulation a lot of times and save the initial velocities of the tosses which achieve the intended lucky 7.
+3. There may be other ways to use a physics engine to compute the intended side with fewer calculations and time elements.
+
+Approach 1 seemed tempting, but I thought it could take a long time so I went with the less elegant and complete solution, #2.
+We'll gather a large set of initial dice states, involving position, rotation, velocity, and angular velocity and use those values when running the simulation users see on the page.
+With enough data entries this method will effectively give the same impression as the first method.
+
+So we ran the simulation on an accelerated time scale about X times to gain X entries in our `LuckyNumbers` array.
+
+The ending result is a lucky dice tossing simulation:
+
+Thanks, the code is on github: 
+
+Feel free to make suggestions or fix typos on this blog post on github: 
+
 
 
 // TODO?

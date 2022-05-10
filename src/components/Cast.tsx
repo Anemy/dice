@@ -6,14 +6,44 @@ import Stats from 'three/examples/jsm/libs/stats.module';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader';
 import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader';
 
+import { luckyNumbers as luckyDice, confirmedLuckyNumbers as reallyLuckyDice } from '../constants/LuckyNumbers';
+
+import MeshSurfaceSampler from './MeshSurfaceSampler';
+
 // The order of the sides matches the model we are currently using.
 const sides = ['five', 'three', 'one', 'two', 'six', 'four'] as const;
 type FacingSide = typeof sides[number];
 
-type diceCastLocations = 'sides' | 'from-camera';
-const castLocation: diceCastLocations = Math.random() > 0.5 ? 'sides' : 'from-camera';
+type InitialDieNumbers = {
+  velocity: CANNON.Vec3;
+  quaternion: CANNON.Quaternion;
+  force?: CANNON.Vec3;
+  torque?: CANNON.Vec3;
+  position: CANNON.Vec3;
+  inertia?: CANNON.Vec3;
+  angularVelocity: CANNON.Vec3;
+};
 
-const diceThrowVelocity = castLocation === 'sides' ? 25 : 15;
+type LuckyInitialNumberPair = {
+  first: InitialDieNumbers;
+  second: InitialDieNumbers;
+}
+
+// Use the pre-calculated set of numbers for initial velocities (very lucky).
+// 'lucky-numbers';
+
+type diceCastLocations = 'sides' | 'from-camera' | 'lucky-numbers';
+// Use the pre-calculated set of numbers for initial velocities (very lucky).
+const castLocation: diceCastLocations = 'lucky-numbers'; // 'sides'; // 'lucky-numbers';// 'sides'; // Math.random() > 0.5 ? 'sides' : 'from-camera';
+
+// Useful for finding 'lucky' numbers.
+const doPrintLucky = false;
+const stopAll = false;
+
+const confirmedLuckyNumbers: LuckyInitialNumberPair[] = [];
+const confirmLuckies = !doPrintLucky && true;
+
+const diceThrowVelocity = 25; // castLocation === 'sides' ? 25 : 15;
 const diceRotationRandomness = 1;
 const diceAngularRotationAmt = 10; // Only used in 'sides' currently.
 const diceToMake = 2; // 100;
@@ -28,16 +58,24 @@ const debugView = false;
 // before declaring the dice is stable/landed.
 // Currently it influences how long until the dice does the loaded swap
 // although that could be separated out or done differently.
-const stabilizeCheckArrayAmt = 5;
+const stabilizeCheckArrayAmt = 10;
+const thresholdForFlippingDiceOnStabilization = 0.15; // 1.0; // 0.2;
+let lastThrowTime = Date.now();
+
+const luckyNumbers: LuckyInitialNumberPair[] = [];
 
 type Die = {
   dieGroup: THREE.Group; // Use a group to group the dots.
+  diePoints: THREE.InstancedMesh;
   mesh: THREE.Mesh;
   physicsModel: CANNON.Body;
   physicsRenderMesh: THREE.Mesh;
   velocityTotalsForStabilizationCheck: number[];
   intendedFacingSide: FacingSide;
   didRotate?: boolean;
+  initialNumbers?: InitialDieNumbers;
+  sampler: MeshSurfaceSampler;
+  opacity: number;
 };
 
 /**
@@ -66,9 +104,9 @@ function getVelocityVectorToBumpDiceToLoadedFace(die: Die): THREE.Vector3 {
 
   const velocityBumpToRotate = 5;
 
-  const quaternion = die.physicsModel.quaternion;
+  // const quaternion = die.physicsModel.quaternion;
 
-  debugQuaternion(quaternion);
+  // debugQuaternion(quaternion);
 
   const currentFacingSideItem = die.dieGroup.children.find(
     child => child.name === facingSide
@@ -161,9 +199,9 @@ function createLights(): THREE.Light[] {
   return lights; // [light1, light2];
 }
 
-function debugQuaternion(quaternion: CANNON.Quaternion) {
-  console.log('x, y, z, w', quaternion.x, quaternion.y, quaternion.z, quaternion.w); 
-}
+// function debugQuaternion(quaternion: CANNON.Quaternion) {
+//   console.log('x, y, z, w', quaternion.x, quaternion.y, quaternion.z, quaternion.w); 
+// }
 
 
 // This returns the number 1-6 that is facing up based on the die's orientation.
@@ -312,14 +350,56 @@ function createDice(diceModel: THREE.Mesh) {
     spheres.forEach(sphere => dieGroup.add(sphere));
     dieGroup.add(mesh);
 
+    // const sampler = new (THREE as any).MeshSurfaceSampler(mesh).build();
+    const sampler = new MeshSurfaceSampler(mesh).build();
+
+    // const sphereGeometry = new THREE.SphereGeometry(0.05, 6, 6);
+    const sizeOfPoints = 0.01;
+    const sphereGeometry = new THREE.SphereGeometry(sizeOfPoints, 6, 6);
+    const sphereMaterial = new THREE.MeshBasicMaterial({
+      // color: 0xffa0e6
+      // color: 0x030303
+      color: 0xe30000
+    });
+    const amtOfPoints = 3000; // 300;
+
+    const diePoints = new THREE.InstancedMesh(sphereGeometry, sphereMaterial, amtOfPoints);
+    diePoints.material.transparent = true;
+    // threeScene.add(diePoints);
+    dieGroup.add(diePoints);
+
+    const tempPosition = new THREE.Vector3();
+    const tempObject = new THREE.Object3D();
+    for (let i = 0; i < amtOfPoints; i++) {
+      sampler.sample(tempPosition);
+      tempObject.position.set(tempPosition.x, tempPosition.y, tempPosition.z);
+      tempObject.scale.setScalar(Math.random() * 0.5 + 0.5);
+      tempObject.updateMatrix();
+      diePoints.setMatrixAt(i, tempObject.matrix);
+    }
+
+
+  // const sampler = new MeshSurfaceSampler(dieMesh).build();
+
+  // const sphereGeometry = new THREE.SphereGeometry(0.05, 6, 6);
+  // const sphereMaterial = new THREE.MeshBasicMaterial({
+  //   color: 0xffa0e6
+  // });
+  // const spheres = new THREE.InstancedMesh(sphereGeometry, sphereMaterial, 300);
+  // threeScene.add(spheres);	  
+
+
     const die: Die = {
       dieGroup,
+      diePoints,
+      sampler,
       mesh,
       physicsModel,
       physicsRenderMesh,
       // When the delta gets low then we know it's bout stable.
       velocityTotalsForStabilizationCheck,
-      intendedFacingSide: ((i + offsetFacingSide) % 2 === 0) ? 'three' : 'four'
+      intendedFacingSide: ((i + offsetFacingSide) % 2 === 0) ? 'three' : 'four',
+      opacity: 0.5
     };
 
     dice.push(die);
@@ -381,9 +461,6 @@ function throwDiceFromCamera(dice: Die[], camera: THREE.Camera) {
     diceRotationRandomness * Math.random() + diceRotationRandomness * 0.5;
 
   dice.forEach((die: Die, dieIndex: number) => {
-    // Reset some of the helpers.
-    die.didRotate = false;
-
     function getShootDirection() {
       const vector = new THREE.Vector3(0, 0, 1);
       vector.unproject(camera);
@@ -450,6 +527,60 @@ function throwDiceFromCamera(dice: Die[], camera: THREE.Camera) {
       newDiceRotationRandomness *
       (Math.random() > 0.5 ? 1 : -1);
 
+    // die.initialNumbers = JSON.parse(JSON.stringify(die.physicsModel));
+    die.initialNumbers = {
+      quaternion: die.physicsModel.quaternion.clone(),
+      velocity: die.physicsModel.velocity.clone(),
+      position: die.physicsModel.position.clone(),
+      angularVelocity:  die.physicsModel.angularVelocity.clone()
+    }
+
+    die.dieGroup.rotation.x += 5;
+    die.dieGroup.position.copy(die.physicsModel.position as any);
+  });
+}
+let throwingLuckyDice: LuckyInitialNumberPair;
+let throwingLuckyIndex: number;
+const usedLuckyIndexes: number[] = [];
+function throwLuckyDice(dice: Die[]) {
+  throwingLuckyIndex = Math.floor((reallyLuckyDice as LuckyInitialNumberPair[]).length * Math.random());
+  const diceToUse: LuckyInitialNumberPair = reallyLuckyDice[throwingLuckyIndex] as LuckyInitialNumberPair;
+  throwingLuckyDice = {
+    ...diceToUse
+  };
+
+  // throwingLuckyIndex = Math.floor((luckyDice as LuckyInitialNumberPair[]).length * Math.random());
+  // const diceToUse: LuckyInitialNumberPair = luckyDice[throwingLuckyIndex] as LuckyInitialNumberPair;
+  // throwingLuckyDice = {
+  //   ...diceToUse
+  // };
+
+  // console.log(' diceToUse', diceToUse);
+  dice.forEach((die: Die, dieIndex: number) => {
+    const luckyDieToUse = (dieIndex % 2 === 0) ? diceToUse.first : diceToUse.second;
+    // console.log('luckyDieToUse', luckyDieToUse);
+    die.physicsModel.quaternion = new CANNON.Quaternion(
+      luckyDieToUse.quaternion.x,
+      luckyDieToUse.quaternion.y,
+      luckyDieToUse.quaternion.z,
+      luckyDieToUse.quaternion.w,
+    );
+    die.physicsModel.position = new CANNON.Vec3(
+      luckyDieToUse.position.x,
+      luckyDieToUse.position.y,
+      luckyDieToUse.position.z,
+    );
+    die.physicsModel.velocity = new CANNON.Vec3(
+      luckyDieToUse.velocity.x,
+      luckyDieToUse.velocity.y,
+      luckyDieToUse.velocity.z,
+    );
+    die.physicsModel.angularVelocity = new CANNON.Vec3(
+      luckyDieToUse.angularVelocity.x,
+      luckyDieToUse.angularVelocity.y,
+      luckyDieToUse.angularVelocity.z,
+    );
+
     die.dieGroup.rotation.x += 5;
     die.dieGroup.position.copy(die.physicsModel.position as any);
   });
@@ -512,13 +643,28 @@ function throwDiceFromSides(dice: Die[]) {
       Math.random() * (Math.random() > 0.5 ? 1 : -1) * diceAngularRotationAmt
     );
 
+    die.initialNumbers = {
+      quaternion: die.physicsModel.quaternion.clone(),
+      velocity: die.physicsModel.velocity.clone(),
+      position: die.physicsModel.position.clone(),
+      angularVelocity: die.physicsModel.angularVelocity.clone()
+    }
+
     die.dieGroup.rotation.x += 5;
     die.dieGroup.position.copy(die.physicsModel.position as any);
   });
 }
 
 function rollDice(dice: Die[], camera: THREE.Camera) {
+  lastThrowTime = Date.now();
+  dice.forEach((die: Die) => {
+    die.didRotate = false;
+    die.opacity = 0.5;
+  });
   switch(castLocation) {
+    case 'lucky-numbers':
+      throwLuckyDice(dice); 
+      break;
     case 'from-camera':
       throwDiceFromCamera(dice, camera);
       break;
@@ -654,6 +800,9 @@ async function startDiceSimulation(htmlElementToAttachTo: HTMLDivElement): Promi
 
   let animationLoop: number | null;
 
+  let firstNumberLand: undefined | FacingSide;
+  let firstDiceLand: undefined | Die;
+
   // This function is the run loop that updates the dice and applies
   // gravity and collisions.
   function animate() {
@@ -661,6 +810,7 @@ async function startDiceSimulation(htmlElementToAttachTo: HTMLDivElement): Promi
 
     // Run the simulation independently of framerate every 1 / 60 ms
     world.fixedStep();
+    // world.fixedStep(1);
 
     // Update mouse physics model position (used to push the dice around).
 
@@ -682,6 +832,7 @@ async function startDiceSimulation(htmlElementToAttachTo: HTMLDivElement): Promi
       die.physicsRenderMesh.position.z = die.physicsModel.position.z;
 
       // Not a true total it's just x and z.
+      // Used to determine when the dice has slowed down / stopped moving.
       const velocityTotal = Math.abs(die.physicsModel.velocity.x) + Math.abs(die.physicsModel.velocity.z);
       die.velocityTotalsForStabilizationCheck.unshift(velocityTotal);
       die.velocityTotalsForStabilizationCheck.pop();
@@ -690,7 +841,62 @@ async function startDiceSimulation(htmlElementToAttachTo: HTMLDivElement): Promi
         previousVal, currentVal
       ) => previousVal + currentVal);
 
-      if (totalForLastVelocities > 0.2) {
+
+      if (die.opacity === undefined) {
+        die.opacity = 0.5;
+      }
+      const swingOpacity = 0.05;
+      die.opacity += Math.random() * swingOpacity * (Math.random() > 0.5 ? 1 : -1);
+      // Bound opacity to 0-1.
+      die.opacity = Math.min(1, Math.max(0, die.opacity));
+      // if (Math.random() > 0.1) {
+      const isSlowingDown = totalForLastVelocities < thresholdForFlippingDiceOnStabilization * 3;
+      const firstPhaseThreshold = 1500;
+      const secondPhaseThreshold = 2500;
+      const isFirstPhase = Date.now() - lastThrowTime < firstPhaseThreshold;
+      const isSecondPhase = !isFirstPhase && Date.now() - lastThrowTime < secondPhaseThreshold;
+      // if (
+      //   // die.opacity < 0.9
+      //   // && 
+      //   !isSlowingDown
+      // ) {
+        const velocityPerc = Math.min(totalForLastVelocities, 200) / 200;
+        let materialOpacity = 0.5;
+        // console.log('totalForLastVelocities', totalForLastVelocities);
+        // material.opacity = 1 - velocityPerc;
+        // die.opacity = 
+        // material.opacity = 0.2;
+        // material.opacity = die.opacity;
+        if (isFirstPhase) {
+          materialOpacity = 0.05;
+        } else if (isSecondPhase) {
+          const increaseToOpacity = ((Date.now() - lastThrowTime) - firstPhaseThreshold) / (secondPhaseThreshold - firstPhaseThreshold);
+          // console.log('increaseToOpacity', increaseToOpacity);
+          // material.opacity = die.opacity * (increaseToOpacity);
+          materialOpacity = (1 - velocityPerc) * (increaseToOpacity);
+        } else {
+          materialOpacity = 1 - velocityPerc;
+        }
+        for (const material of (die.mesh.material as any)) {
+          material.transparent = true;
+          material.opacity = materialOpacity;
+          
+          // material.opacity = die.opacity;
+        }
+
+        // for (const material of (die.diePoints.material as any)) {
+        //   material.opacity = 1 - materialOpacity;
+        // }
+        (die.diePoints.material as any).opacity = 1 - materialOpacity;
+
+      // } else {
+      //   for (const material of (die.mesh.material as any)) {
+      //     material.transparent = false;
+      //     material.opacity = 1;
+      //   }
+      // }
+
+      if (totalForLastVelocities > thresholdForFlippingDiceOnStabilization) {
         return;
       }
 
@@ -706,10 +912,77 @@ async function startDiceSimulation(htmlElementToAttachTo: HTMLDivElement): Promi
         return;
       }
 
+      if (stopAll) {
+        return;
+      }
+
       // For only running it once:
       // if (die.didRotate) {
       //   return;
       // }
+
+      if (doPrintLucky) {
+        if (!die.didRotate) {
+          if (firstNumberLand) {
+            if (
+              firstNumberLand === 'four' && facingSide === 'three'
+              || firstNumberLand === 'three' && facingSide === 'four'
+            ) {
+              luckyNumbers.push({
+                first: firstDiceLand.initialNumbers,
+                second: die.initialNumbers
+              });
+
+              console.log('new luckyNumbers', luckyNumbers);
+            }
+
+            // console.log('rethrow');
+            firstNumberLand = undefined;
+            firstDiceLand = undefined;
+            if (stopAll) {
+              return;
+            }
+            rollDice(dice, camera);
+            return;
+          } else {
+            firstNumberLand = facingSide;
+            firstDiceLand = die;
+          }
+        }
+      }
+
+      if (confirmLuckies) {
+        if (!die.didRotate) {
+          if (firstNumberLand) {
+            if (
+              firstNumberLand === 'four' && facingSide === 'three'
+              || firstNumberLand === 'three' && facingSide === 'four'
+            ) {
+              // console.log('throwingLuckyDice', throwingLuckyDice);
+              if (!usedLuckyIndexes.includes(throwingLuckyIndex)) {
+                usedLuckyIndexes.push(throwingLuckyIndex);
+                confirmedLuckyNumbers.push({
+                  ...throwingLuckyDice
+                });
+
+                console.log('new confirmedLuckyNumbers', confirmedLuckyNumbers);
+              }
+            }
+
+            firstNumberLand = undefined;
+            firstDiceLand = undefined;
+            if (stopAll) {
+              return;
+            }
+            // console.log('rethrow');
+            rollDice(dice, camera);
+            return;
+          } else {
+            firstNumberLand = facingSide;
+            firstDiceLand = die;
+          }
+        }
+      }
 
       if (facingSide === die.intendedFacingSide) {
         if (!die.didRotate) {
@@ -724,10 +997,10 @@ async function startDiceSimulation(htmlElementToAttachTo: HTMLDivElement): Promi
       // debugQuaternion(die.physicsModel.quaternion);
 
       const loadedDieBump = getVelocityVectorToBumpDiceToLoadedFace(die);
-      console.log('Applying loaded die bump', loadedDieBump);
-      die.physicsModel.velocity.x = loadedDieBump.x;
-      die.physicsModel.velocity.y = loadedDieBump.y;
-      die.physicsModel.velocity.z = loadedDieBump.z;
+      // console.log('Applying loaded die bump', loadedDieBump);
+      // die.physicsModel.velocity.x = loadedDieBump.x;
+      // die.physicsModel.velocity.y = loadedDieBump.y;
+      // die.physicsModel.velocity.z = loadedDieBump.z;
 
       if (debugView) {
         // Debug render for the force we apply to the die to rotate.
@@ -741,7 +1014,7 @@ async function startDiceSimulation(htmlElementToAttachTo: HTMLDivElement): Promi
         threeScene.add(arrowHelper);
       }
 
-      console.log('Loaded roll from', facingSide, 'to', die.intendedFacingSide);
+      // console.log('Loaded roll from', facingSide, 'to', die.intendedFacingSide);
     });
 
     controls.update();

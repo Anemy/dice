@@ -1,6 +1,7 @@
 import { css } from '@emotion/react';
 
 import { Scene } from './Cast';
+import { Dots } from './Dots';
 
 const simulationStyles = css({
   // color: 'rgb(50, 20, 200)',
@@ -16,6 +17,7 @@ function Simulation(): JSX.Element {
     <div css={simulationStyles}>
       <div>
         <Scene />
+        {false && <Dots />}
       </div>
     </div>
   );
