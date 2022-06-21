@@ -350,22 +350,17 @@ function createDice(diceModel: THREE.Mesh) {
     spheres.forEach(sphere => dieGroup.add(sphere));
     dieGroup.add(mesh);
 
-    // const sampler = new (THREE as any).MeshSurfaceSampler(mesh).build();
     const sampler = new MeshSurfaceSampler(mesh).build();
 
-    // const sphereGeometry = new THREE.SphereGeometry(0.05, 6, 6);
     const sizeOfPoints = 0.01;
     const sphereGeometry = new THREE.SphereGeometry(sizeOfPoints, 6, 6);
     const sphereMaterial = new THREE.MeshBasicMaterial({
-      // color: 0xffa0e6
-      // color: 0x030303
       color: 0xe30000
     });
     const amtOfPoints = 3000; // 300;
 
     const diePoints = new THREE.InstancedMesh(sphereGeometry, sphereMaterial, amtOfPoints);
     diePoints.material.transparent = true;
-    // threeScene.add(diePoints);
     dieGroup.add(diePoints);
 
     const tempPosition = new THREE.Vector3();
@@ -377,17 +372,6 @@ function createDice(diceModel: THREE.Mesh) {
       tempObject.updateMatrix();
       diePoints.setMatrixAt(i, tempObject.matrix);
     }
-
-
-  // const sampler = new MeshSurfaceSampler(dieMesh).build();
-
-  // const sphereGeometry = new THREE.SphereGeometry(0.05, 6, 6);
-  // const sphereMaterial = new THREE.MeshBasicMaterial({
-  //   color: 0xffa0e6
-  // });
-  // const spheres = new THREE.InstancedMesh(sphereGeometry, sphereMaterial, 300);
-  // threeScene.add(spheres);	  
-
 
     const die: Die = {
       dieGroup,

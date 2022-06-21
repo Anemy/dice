@@ -1,16 +1,42 @@
 WIP - mostly notes, might make a blog post.
 
 Wanted to create a loaded dice simulation for the website.
+Here's what we'll create in this post/tutorial:
 
+LIVE_DEMO_OF_END_RESULT
+Click to rerun?
+
+Tech used:
+- Typescript (a typed superset of javascript)
+- THREE.js
+- CANNON.js (physics) 
 To do this we used THREE.js to manage the 3d rendering of the dice.
 For the physics engine we used CANNON.js
 
-First step is rendering dice, a former colleague of mine would always say
-"Let's get some pixels". To render the dice we could use a basic polygon cube as a
-first step.
+First step is rendering something, a former colleague of mine would always say
+"Let's get some pixels on the screen". 
+Let's install THREE.js, the 3d rendering engine we'll be using.
+Let's start with a basic cube as a first step.
+
+CODE_FOR_BASIC_CUBE_3D
+
+Before we add gravity we'll want something for this dice to fall onto.
+We need a ground. We use a THREE.js Plane to do this.
+
+SHOW_PLANE_CODE
 
 Next we want to apply gravity to the die and watch it fall to the ground.
-We'll also need a ground. We use a THREE.js Plane to do this.
+To manage the physics, so we can skip some math degrees, we'll be using the
+CANNON.js library.
+
+SHOW_ADD_CANNON
+
+SHOW_DICE_FALLING_WITH_CANNON
+
+Nice, so far we've got a basic physics simulation with something similar to a dice.
+
+Should we do the material now or the forces on the dice?
+Material first, make it look nice.
 
 To cast the die we add some random forces on initialization.
 
@@ -56,5 +82,5 @@ Feel free to make suggestions or fix typos on this blog post on github:
 
 // TODO?
 Next blog post we'll investigate how we pulled off the 3d rendering of an image
-on a mug for Artsable.com - user submitted code.
+on a mug for Artsable.com - there's a catch - these images are generated on our end using (untrustable) user submitted code.
 
