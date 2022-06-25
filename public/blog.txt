@@ -1,10 +1,12 @@
 WIP - mostly notes, might make a blog post.
 
-Wanted to create a loaded dice simulation for the website.
+Wanted to create a loaded dice simulation for a lucky website.
 Here's what we'll create in this post/tutorial:
 
 LIVE_DEMO_OF_END_RESULT
 Click to rerun?
+
+## Setup
 
 Tech used:
 - Typescript (a typed superset of javascript)
@@ -13,10 +15,9 @@ Tech used:
 To do this we used THREE.js to manage the 3d rendering of the dice.
 For the physics engine we used CANNON.js
 
-First step is rendering something, a former colleague of mine would always say
+First step is rendering something, a former colleague of mine (Lucas) would always say
 "Let's get some pixels on the screen". 
-Let's install THREE.js, the 3d rendering engine we'll be using.
-Let's start with a basic cube as a first step.
+Let's render a basic cube as a first step, we're using THREE.js, a power javascript 3d library, .
 
 CODE_FOR_BASIC_CUBE_3D
 
@@ -25,7 +26,7 @@ We need a ground. We use a THREE.js Plane to do this.
 
 SHOW_PLANE_CODE
 
-Next we want to apply gravity to the die and watch it fall to the ground.
+Now let's apply gravity to the die and watch it fall to the ground.
 To manage the physics, so we can skip some math degrees, we'll be using the
 CANNON.js library.
 
@@ -35,19 +36,11 @@ SHOW_DICE_FALLING_WITH_CANNON
 
 Nice, so far we've got a basic physics simulation with something similar to a dice.
 
-Should we do the material now or the forces on the dice?
-Material first, make it look nice.
+## Physics
 
 To cast the die we add some random forces on initialization.
 
-However we wanted something which we could more easily
-apply materials to and have things like concave spaces where the dice number is displayed.
-In order for this level of detail we'll need a 3d model with a material.
-With a material we can more easily configure things like colors and how light impacts the displayed object.
-We found a creative commons 3d model on a website and went with that.
-There are a number of websites to find something like this on.
-
-Next we needed to know what number is facing up on the dice once it has stabilized.
+Now we need to know what number is facing up on the dice once it has stabilized.
 
 To do this we need to compute the orientation of the die.
 We can compute the orientation of the die by attaching points to each side of the die
@@ -55,19 +48,33 @@ and then performing all of the physics on the entire group, die and points.
 After the dice is rotated we apply the rotation to these points and calculate
 the point with the highest y position. That point indicates the top facing side.
 
-// TODO: Update code to not compute die pos all the time?
+## Model & Material
 
-This approach worked most of the time, and had an interesting look. Sometimes the dice would run into each other and be unable to rotate to their intended side.
+To make it look as a proper dice should we'll import a dice model and material into our scene.
+We used a creative commons model from  . 
+There are many sites out there to find existing models.
+Alternatively we could have modelled it ourselves as it is a simple shape and material.
+
+We now have a running dice simulation with a nice model where we can see
+the ending number of the dice.
+
+## Lucky 7
+
+We want the dice to always land on 3 and 4 for a total of 7 for this website.
+One way of doing this is applying a pushing force on the stabilized die to
+make it rotate to the intended orientation.
+
+This approach worked most of the time, and had an interesting look.
+The dice would occasionally run into each other and be unable to rotate to their intended side.
 Ultimately we decided this method seemed a little too 'loaded' and cartoonish.
 
-What we wanted to do was have the dice always land on their intended sides without the extra push force at the end.
+We want to have the dice always land on their intended sides without the extra push force at the end.
 We had two options of how to do this:
 1. Math it up and create an equation that would always land the dice with their intended side up, this could hard to do with the possible collisions involved.
-2. Run the random simulation a lot of times and save the initial velocities of the tosses which achieve the intended lucky 7.
-3. There may be other ways to use a physics engine to compute the intended side with fewer calculations and time elements.
+2. Run the random simulation a lot of times and save the initial parameters of the tosses which achieve the intended lucky 7.
 
-Approach 1 seemed tempting, but I thought it could take a long time so I went with the less elegant and complete solution, #2.
-We'll gather a large set of initial dice states, involving position, rotation, velocity, and angular velocity and use those values when running the simulation users see on the page.
+Approach #1 was tempting, but I thought it could potentially take a long time and would be harder to tweak, so I went with the less elegant and complete solution, #2.
+We'll gather a set of initial dice states, involving position, rotation, velocity, and angular velocity. Then we'll use those values to run the simulation users see on the page.
 With enough data entries this method will effectively give the same impression as the first method.
 
 So we ran the simulation on an accelerated time scale about X times to gain X entries in our `LuckyNumbers` array.
@@ -84,3 +91,7 @@ Feel free to make suggestions or fix typos on this blog post on github:
 Next blog post we'll investigate how we pulled off the 3d rendering of an image
 on a mug for Artsable.com - there's a catch - these images are generated on our end using (untrustable) user submitted code.
 
+
+
+
+I would like a social media website that focuses on improving people's relationships and happiness. I do not value a social media site that aims to maximize my time spent on it and how it can use me as a product to sell.
