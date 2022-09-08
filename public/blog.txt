@@ -17,7 +17,7 @@ For the physics engine we used CANNON.js
 
 First step is rendering something, a former colleague of mine (Lucas) would always say
 "Let's get some pixels on the screen". 
-Let's render a basic cube as a first step, we're using THREE.js, a power javascript 3d library, .
+Now render a basic cube as a first step, we're using THREE.js, a power javascript 3d library.
 
 CODE_FOR_BASIC_CUBE_3D
 

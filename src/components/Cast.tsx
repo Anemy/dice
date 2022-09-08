@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
@@ -9,6 +9,7 @@ import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader';
 import { luckyNumbers as luckyDice, confirmedLuckyNumbers as reallyLuckyDice } from '../constants/LuckyNumbers';
 
 import MeshSurfaceSampler from './MeshSurfaceSampler';
+import { SerializedStyles } from '@emotion/react';
 
 // The order of the sides matches the model we are currently using.
 const sides = ['five', 'three', 'one', 'two', 'six', 'four'] as const;
@@ -234,6 +235,7 @@ function createPlanes(): [CANNON.Body, THREE.Mesh, CANNON.Body, CANNON.Body, CAN
   const planeShape = new CANNON.Plane();
   const planeBody = new CANNON.Body({ mass: 0 });
   planeBody.addShape(planeShape);
+  // Rotate so that the plane faces up.
   planeBody.quaternion.setFromAxisAngle(
     new CANNON.Vec3(1, 0, 0),
     -Math.PI / 2
@@ -658,7 +660,22 @@ function rollDice(dice: Die[], camera: THREE.Camera) {
   }
 }
 
-async function startDiceSimulation(htmlElementToAttachTo: HTMLDivElement): Promise<() => void | void> {
+type SimulationInstance = {
+  stop: () => void;
+  pause: () => void;
+  resume: () => void;
+};
+
+async function startDiceSimulation({
+  htmlElementToAttachTo,
+  size
+}: {
+  htmlElementToAttachTo: HTMLDivElement,
+  size?: {
+    width: number;
+    height: number;
+  }
+}): Promise<SimulationInstance> {
   const mouse = {
     x: 0,
     y: 0
@@ -738,7 +755,7 @@ async function startDiceSimulation(htmlElementToAttachTo: HTMLDivElement): Promi
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap; // default THREE.PCFShadowMap
 
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setSize(size ? size.width : window.innerWidth, size ? size.height : window.innerHeight);
 
   // On clear background (change for real background).
   renderer.setClearColor(0xffffff, 0);
@@ -787,10 +804,16 @@ async function startDiceSimulation(htmlElementToAttachTo: HTMLDivElement): Promi
   let firstNumberLand: undefined | FacingSide;
   let firstDiceLand: undefined | Die;
 
+  let paused = false;
+
   // This function is the run loop that updates the dice and applies
   // gravity and collisions.
   function animate() {
     animationLoop = requestAnimationFrame(animate);
+
+    if (paused) {
+      return;
+    }
 
     // Run the simulation independently of framerate every 1 / 60 ms
     world.fixedStep();
@@ -1012,7 +1035,7 @@ async function startDiceSimulation(htmlElementToAttachTo: HTMLDivElement): Promi
   function onWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(size ? size.width : window.innerWidth, size ? size.height : window.innerHeight);
 
     // Might not need this extra render.
     render();
@@ -1075,31 +1098,65 @@ async function startDiceSimulation(htmlElementToAttachTo: HTMLDivElement): Promi
   // When the mouse moves, call the given function
   document.addEventListener('mousemove', onMouseMove, false);
 
-  return () => {
-    window.removeEventListener('resize', onWindowResize);
-    window.removeEventListener('click', onClick);
-    if (animationLoop !== null) {
-      cancelAnimationFrame(animationLoop);
-      renderer.dispose();
-      animationLoop = null;
+  return {
+    stop: () => {
+      window.removeEventListener('resize', onWindowResize);
+      window.removeEventListener('click', onClick);
+      if (animationLoop !== null) {
+        cancelAnimationFrame(animationLoop);
+        renderer.dispose();
+        animationLoop = null;
+      }
+    },
+    pause: () => {
+      if (animationLoop === null) {
+        return;
+      }
+
+      paused = true;
+    },
+    resume: () => {
+      if (animationLoop === null) {
+        return;
+      }
+
+      paused = false;
     }
-  }
+  };
 }
 
-function Scene(): JSX.Element {
+function Scene({
+  paused,
+  size,
+  styles,
+}: {
+  paused?: boolean;
+  size?: {
+    width: number;
+    height: number;
+  },
+  styles?: SerializedStyles,
+}): JSX.Element {
   const sceneContainerRef = useRef<HTMLDivElement | null>(null);
+  const simulationInstance = useRef<SimulationInstance | null>(null);
+
+  // We don't refresh when the size is updated.
+  const simulationSize = useRef(size);
 
   useEffect(() => {
     let unmounted = false;
-    let cleanupSimulation: () => void;
 
     async function startSimulation() {
-      cleanupSimulation = await startDiceSimulation(sceneContainerRef.current);
+      simulationInstance.current = await startDiceSimulation({
+        htmlElementToAttachTo: sceneContainerRef.current,
+        size: simulationSize.current
+      });
 
-      if (unmounted && cleanupSimulation) {
-        // If we finish loading after we've already unmounted we can cleanup
-        // and return.
-        cleanupSimulation();
+      if (unmounted && simulationInstance.current) {
+        // If we finish loading after we've already unmounted we
+        // can cleanup and return.
+        simulationInstance.current.stop();
+        simulationInstance.current = null;
       }
     }
 
@@ -1107,13 +1164,22 @@ function Scene(): JSX.Element {
 
     return () => {
       unmounted = true;
-      if (cleanupSimulation) {
-        cleanupSimulation();
+      if (simulationInstance.current) {
+        simulationInstance.current.stop();
+        simulationInstance.current = null;
       }
     };
   }, []);
 
-  return <div ref={sceneContainerRef} />;
+  useEffect(() => {
+    if (simulationInstance.current) {
+      paused
+        ? simulationInstance.current.pause()
+        : simulationInstance.current.resume();
+    }
+  }, [ paused ]);
+
+  return <div css={styles} ref={sceneContainerRef} />;
 }
 
 export { Scene };

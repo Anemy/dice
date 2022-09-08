@@ -1,7 +1,8 @@
 // import { css, Global } from '@emotion/react';
 // import emotionReset from 'emotion-reset';
 
-import { Simulation } from './components/Simulation';
+import { Blog } from './components/Blog';
+// import { Simulation } from './components/Simulation';
 
 // const appStyles = css({
 //   background: 'purple'
@@ -22,10 +23,11 @@ import { Simulation } from './components/Simulation';
 //   }
 // `;
 
-function App() {
+function App(): JSX.Element {
   return (
     <>
-      <Simulation />
+      {/* <Simulation /> */}
+      <Blog />
       {/* <Global styles={globalStyles} /> */}
     </>
   );
